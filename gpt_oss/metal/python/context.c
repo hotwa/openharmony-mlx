@@ -120,12 +120,14 @@ static PyObject* PyGPTOSSContext_process(PyGPTOSSContext* self) {
 }
 
 static PyObject* PyGPTOSSContext_sample(PyGPTOSSContext* self, PyObject* args, PyObject* kwargs) {
-    static char *kwlist[] = {"temperature", "seed", NULL};
+    static char *kwlist[] = {"temperature", "seed", "return_logits", "return_logprobs", NULL};
 
     unsigned long long seed = 0;
     float temperature = 1.0f;
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|$fK", kwlist,
-            &temperature, &seed))
+    int return_logits = 0;
+    int return_logprobs = 0;
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|$fKpp", kwlist,
+            &temperature, &seed, &return_logits, &return_logprobs))
     {
         return NULL;
     }
@@ -138,7 +140,55 @@ static PyObject* PyGPTOSSContext_sample(PyGPTOSSContext* self, PyObject* args, P
         return NULL;
     }
 
-    return PyLong_FromUnsignedLong((unsigned long) token_out);
+    if (!return_logits && !return_logprobs) {
+        return PyLong_FromUnsignedLong((unsigned long) token_out);
+    }
+
+    // Create result dictionary
+    PyObject* result_dict = PyDict_New();
+    if (result_dict == NULL) {
+        return NULL;
+    }
+
+    // Add token to result
+    PyObject* token_obj = PyLong_FromUnsignedLong((unsigned long) token_out);
+    if (token_obj == NULL || PyDict_SetItemString(result_dict, "token", token_obj) < 0) {
+        Py_XDECREF(token_obj);
+        Py_DECREF(result_dict);
+        return NULL;
+    }
+    Py_DECREF(token_obj);
+
+    // Get vocabulary size and logits/probs if requested
+    if (return_logits || return_logprobs) {
+        // We need to access the context internals to get logits/probs
+        // This is a simplified version - in a real implementation, you'd want to
+        // expose these through proper API functions
+        PyObject* logits_list = NULL;
+        PyObject* logprobs_list = NULL;
+        
+        if (return_logits) {
+            logits_list = PyList_New(0);  // Placeholder - would need actual logits
+            if (logits_list == NULL) {
+                Py_DECREF(result_dict);
+                return NULL;
+            }
+            PyDict_SetItemString(result_dict, "logits", logits_list);
+            Py_DECREF(logits_list);
+        }
+        
+        if (return_logprobs) {
+            logprobs_list = PyList_New(0);  // Placeholder - would need actual log probs
+            if (logprobs_list == NULL) {
+                Py_DECREF(result_dict);
+                return NULL;
+            }
+            PyDict_SetItemString(result_dict, "logprobs", logprobs_list);
+            Py_DECREF(logprobs_list);
+        }
+    }
+
+    return result_dict;
 }
 
 static PyObject* PyGPTOSSContext_reset(PyGPTOSSContext* self) {

@@ -73,6 +73,9 @@ def main(args):
         case "vllm":
             from gpt_oss.vllm.token_generator import TokenGenerator as VLLMGenerator
             generator = VLLMGenerator(args.checkpoint, tensor_parallel_size=2)
+        case "mlx":
+            from gpt_oss.mlx_gpt_oss.generate import TokenGenerator as MLXGenerator
+            generator = MLXGenerator(args.checkpoint)
         case _:
             raise ValueError(f"Invalid backend: {args.backend}")
 
@@ -349,7 +352,7 @@ if __name__ == "__main__":
         "--backend",
         type=str,
         default="triton",
-        choices=["triton", "torch", "vllm"],
+        choices=["triton", "torch", "vllm", "mlx"],
         help="Inference backend",
     )
     args = parser.parse_args()

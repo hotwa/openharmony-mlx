@@ -293,6 +293,23 @@ enum gptoss_status GPTOSS_ABI gptoss_context_sample(
     uint32_t* token_out);
 
 /*
+ * Get the raw logits (scores) from the last forward pass.
+ *
+ * @param context Context object created by gptoss_context_create.
+ * @param logits_out Pointer to the array where logits will be stored.
+ * @param max_logits Maximum capacity of the buffer specified by logits_out.
+ * @param num_logits_out Pointer to the variable where the actual number of logits will be stored.
+ *
+ * On success, returns gptoss_status_success and stores logits in the logits_out argument.
+ * On failure, returns an error code and leaves the values unchanged.
+ */
+enum gptoss_status GPTOSS_ABI gptoss_context_get_logits(
+    gptoss_context_t context,
+    float* logits_out,
+    size_t max_logits,
+    size_t* num_logits_out);
+
+/*
  * Increments a Context object's reference count.
  *
  * @param context Pointer to the Context object created by gptoss_create_context.

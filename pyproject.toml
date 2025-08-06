@@ -1,6 +1,6 @@
 [project]
-name = "gpt-oss"
-description = "A collection of reference inference implementations for gpt-oss by OpenAI"
+name = "openharmony-mlx"
+description = "High-performance MLX implementation for GPT-OSS models on Apple Silicon"
 
 dependencies = [
   "openai-harmony",
@@ -25,7 +25,8 @@ version = "0.0.1"
 [project.optional-dependencies]
 triton = ["triton", "safetensors>=0.5.3", "torch>=2.7.0"]
 torch = ["safetensors>=0.5.3", "torch>=2.7.0"]
-metal = ["numpy", "tqdm", "safetensors", "torch"]
+	metal = ["numpy", "tqdm", "safetensors", "torch"]
+	mlx = ["mlx", "safetensors"]
 test = ["pytest>=8.4.1", "httpx>=0.28.1"]
 eval = ["pandas", "numpy", "openai", "jinja2", "tqdm", "blobfile"]
 
