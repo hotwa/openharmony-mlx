@@ -25,25 +25,14 @@ version = "0.0.1"
 [project.optional-dependencies]
 triton = ["triton", "safetensors>=0.5.3", "torch>=2.7.0"]
 torch = ["safetensors>=0.5.3", "torch>=2.7.0"]
-	metal = ["numpy", "tqdm", "safetensors", "torch"]
-	mlx = ["mlx", "safetensors"]
+mlx = ["mlx", "safetensors"]
+metal = ["numpy", "tqdm", "safetensors", "torch"]
 test = ["pytest>=8.4.1", "httpx>=0.28.1"]
 eval = ["pandas", "numpy", "openai", "jinja2", "tqdm", "blobfile"]
 
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "gpt_oss_build_backend.backend"
-backend-path = ["_build"]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["gpt_oss"]
-
-[tool.scikit-build]
-cmake.source-dir = "." # pick up the root CMakeLists.txt
-cmake.args = [
-  "-DGPTOSS_BUILD_PYTHON=ON",
-  "-DCMAKE_BUILD_TYPE=Release",
-  "-DBUILD_SHARED_LIBS=OFF",
-]
-[tool.scikit-build.wheel]
-packages = ["gpt_oss"] # copy the whole Python package tree
