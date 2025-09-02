@@ -81,8 +81,15 @@ python -m gpt_oss.responses_api.serve --inference-backend metal --checkpoint /Vo
 
 ## cherrystudio 配置
 
+添加提供商选择`OpenAI-Response`
+
+添加参数如下
+
 模型ID：gpt-oss-120b
 模型名称：gpt-oss-120b
 分组名称：gpt-oss
+
+API 地址：http://localhost:8080
+密钥：无
 
 请求虽然是gpt-oss-120b，但是实际使用的是gpt-oss-20b。由于后台写死的是120b，所以请求使用gpt-oss-120b
