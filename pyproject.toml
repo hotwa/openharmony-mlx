@@ -93,8 +93,6 @@ test-requires = ["pytest>=8.0"]
 [tool.cibuildwheel.macos]
 # 为 Apple Silicon 构建
 archs = ["arm64"]
-before-build = "echo 'Installing build dependencies...' && pip install pybind11 && xcodebuild -downloadComponent MetalToolchain 2>/dev/null || echo 'MetalToolchain already installed'"
-after-build = "echo 'Build complete: {wheel}'"
 
 [tool.cibuildwheel.macos.environment]
 # Minimum supported: macOS 13.0 (Ventura)

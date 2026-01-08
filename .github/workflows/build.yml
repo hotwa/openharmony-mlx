@@ -62,14 +62,10 @@ jobs:
           echo "MACOS_VERSION=$(sw_vers -productVersion)" >> $GITHUB_ENV
 
       - name: Build wheel
-        run: |
-          python -m cibuildwheel --platform macos --archs arm64 --output-dir wheelhouse
+        run: python -m cibuildwheel --platform macos --output-dir wheelhouse
         env:
           CIBW_BUILD: "cp312-*"
           CIBW_SKIP: "*-win32 *-manylinux* *-musllinux*"
-          CIBW_BEFORE_ALL_MACOS: |
-            pip install pybind11
-            xcodebuild -downloadComponent MetalToolchain 2>/dev/null || true
           CIBW_TEST_COMMAND: "python -c 'import gpt_oss.metal._metal; print(\"OK\")'"
           # Minimum: macOS 13.0, Tested on: macOS ${{ env.MACOS_VERSION }}
 
