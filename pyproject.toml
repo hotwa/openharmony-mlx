@@ -67,21 +67,30 @@ Issues = "https://github.com/hotwa/openharmony-mlx/issues"
 
 [build-system]
 requires = [
-    "setuptools>=68",
-    "wheel",
+    "scikit-build-core>=0.8",
     "pybind11>=2.12",
+    "cmake",
 ]
-build-backend = "setuptools.build_meta"
+build-backend = "scikit_build_core.build"
 
-[tool.setuptools]
+[tool.scikit-build]
 packages = ["gpt_oss"]
 package-dir = {"" = "."}
+wheel.packages = ["gpt_oss"]
+install.strip = true
+
+[tool.scikit-build.build]
+cmake = true
+build-dir = "build/scikit_build"
+
+[tool.scikit-build.cmake]
+args = ["-DCMAKE_BUILD_TYPE=Release"]
+
+[tool.scikit-build.metadata]
+dynamic = {version = "attr:openharmony_mlx.__version__"}
 
 [tool.setuptools.package-data]
 "gpt_oss.metal.assets" = ["*.metallib"]
-
-[tool.setuptools.dynamic]
-version = {attr = "openharmony_mlx.__version__"}
 
 [tool.cibuildwheel]
 # 只在 macOS 上构建 Metal 扩展
