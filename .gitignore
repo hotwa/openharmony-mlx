@@ -57,6 +57,7 @@ _deps/
 *.safetensors
 *.pth
 *.pt
+models/
 
 # Logs
 *.log

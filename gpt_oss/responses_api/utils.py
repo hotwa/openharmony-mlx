@@ -133,3 +133,4 @@ def stub_infer_next_token(tokens: list[int], temperature: float = 0.0) -> int:
         token_queue = fake_tokens.copy()
     time.sleep(0.1)
     return next_tok
+

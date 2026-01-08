@@ -150,3 +150,4 @@ class ResponseObject(BaseModel):
     text: Optional[Dict[str, Any]] = None
     tool_choice: Optional[str] = "auto"
     top_p: Optional[int] = 1
+

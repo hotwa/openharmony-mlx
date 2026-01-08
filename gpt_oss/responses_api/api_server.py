@@ -190,7 +190,7 @@ def create_api_server(
                         )
                 elif entry_dict["channel"] == "final":
                     content = []
-                    for content_entry in entry_dict["content"]:    
+                    for content_entry in entry_dict["content"]:
                         if browser_tool:
                             text_content, annotation_entries, _has_partial_citations = browser_tool.normalize_citations(content_entry["text"])
                             annotations = [UrlCitation(**a) for a in annotation_entries]
@@ -287,7 +287,7 @@ def create_api_server(
         request_body: ResponsesRequest
         request: Request
         sequence_number: int
-    
+
 
         def __init__(
             self,
@@ -367,9 +367,9 @@ def create_api_server(
             sent_output_item_added = False
 
             # we use this if the model outputs a citation to buffer until completed
-            output_delta_buffer = "" 
+            output_delta_buffer = ""
             # we use this to track the current output text content for things like providing the right indices in citations
-            current_output_text_content = "" 
+            current_output_text_content = ""
             current_annotations = []
 
             while True:
@@ -533,7 +533,7 @@ def create_api_server(
                         updated_output_text, annotations, has_partial_citations = browser_tool.normalize_citations(current_output_text_content + output_delta_buffer)
                         # remove the current text to get back the delta but now normalized
                         output_delta_buffer = updated_output_text[len(current_output_text_content):]
-                        
+
                         # Filter annotations to only include those whose start_index is not already present in current_annotations
                         # this is to avoid sending duplicate annotations as multiple annotations can't be in the same place
                         existing_start_indices = {a["start_index"] for a in current_annotations}
@@ -675,7 +675,7 @@ def create_api_server(
                             new_tokens = encoding.render_conversation_for_completion(
                                 Conversation.from_messages(result), Role.ASSISTANT
                             )
-                            
+
                             print(encoding.decode_utf8(new_tokens))
                             self.output_tokens.append(next_tok)
                             self.tokens.append(encoding.encode('<|end|>', allowed_special="all")[0])
@@ -704,7 +704,7 @@ def create_api_server(
 
                             current_output_index += 1
                             self.new_request = True
-                            
+
                             continue
 
                         else:
@@ -782,7 +782,7 @@ def create_api_server(
         system_message_content = SystemContent.new().with_conversation_start_date(
             datetime.datetime.now().strftime("%Y-%m-%d")
         )
-        
+
         if body.reasoning is not None:
             reasoning_effort = get_reasoning_effort(body.reasoning.effort)
             system_message_content = system_message_content.with_reasoning_effort(reasoning_effort)
@@ -810,7 +810,7 @@ def create_api_server(
                             tool.parameters,
                         )
                     )
-        
+
         if len(tools) > 0:
             developer_message_content = developer_message_content.with_function_tools(
                 tools
@@ -913,3 +913,4 @@ def create_api_server(
             return last_event.response
 
     return app
+

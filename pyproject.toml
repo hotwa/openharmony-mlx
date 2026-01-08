@@ -1,38 +1,117 @@
 [project]
 name = "openharmony-mlx"
-description = "High-performance MLX implementation for GPT-OSS models on Apple Silicon"
-
-dependencies = [
-  "openai-harmony",
-  "tiktoken>=0.9.0",
-  "aiohttp>=3.12.14",
-  "chz>=0.3.0",
-  "docker>=7.1.0",
-  "fastapi>=0.116.1",
-  "html2text>=2025.4.15",
-  "lxml>=4.9.4",
-  "pydantic>=2.11.7",
-  "structlog>=25.4.0",
-  "tenacity>=9.1.2",
-  "uvicorn>=0.35.0",
-  "requests>=2.31.0",
-  "termcolor",
-]
+description = "High-performance Metal implementation for GPT-OSS models on Apple Silicon"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-version = "0.0.1"
+version = "0.1.0"
+license = {text = "MIT"}
+authors = [
+    {name = "OpenHarmony MLX Contributors"}
+]
+keywords = ["ai", "llm", "gpt-oss", "metal", "apple-silicon", "macos"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "openai-harmony>=0.0.8",
+    "tiktoken>=0.9.0",
+    "aiohttp>=3.12.14",
+    "chz>=0.3.0",
+    "docker>=7.1.0",
+    "fastapi>=0.116.1",
+    "html2text>=2025.4.15",
+    "lxml>=4.9.4",
+    "pydantic>=2.11.7",
+    "structlog>=25.4.0",
+    "tenacity>=9.1.2",
+    "uvicorn>=0.35.0",
+    "requests>=2.31.0",
+    "termcolor",
+]
 
 [project.optional-dependencies]
+metal = [
+    "numpy",
+    "tqdm",
+    "safetensors",
+    "torch>=2.0",
+]
 triton = ["triton", "safetensors>=0.5.3", "torch>=2.7.0"]
 torch = ["safetensors>=0.5.3", "torch>=2.7.0"]
 mlx = ["mlx", "safetensors"]
-metal = ["numpy", "tqdm", "safetensors", "torch"]
 test = ["pytest>=8.4.1", "httpx>=0.28.1"]
 eval = ["pandas", "numpy", "openai", "jinja2", "tqdm", "blobfile"]
+dev = [
+    "build",
+    "twine",
+    "cibuildwheel",
+    "pybind11>=2.12",
+    "black",
+    "ruff",
+    "mypy",
+]
+
+[project.scripts]
+openharmony-serve = "gpt_oss.responses_api.serve:main"
+
+[project.urls]
+Homepage = "https://github.com/hotwa/openharmony-mlx"
+Repository = "https://github.com/hotwa/openharmony-mlx"
+Issues = "https://github.com/hotwa/openharmony-mlx/issues"
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = [
+    "setuptools>=68",
+    "wheel",
+    "pybind11>=2.12",
+]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["gpt_oss"]
+package-dir = {"" = "."}
+
+[tool.setuptools.package-data]
+"gpt_oss.metal.assets" = ["*.metallib"]
+
+[tool.setuptools.dynamic]
+version = {attr = "openharmony_mlx.__version__"}
+
+[tool.cibuildwheel]
+# 只在 macOS 上构建 Metal 扩展
+build = "cp312-*"
+skip = ["*-win32", "*-manylinux*", "*-musllinux*"]
+test-command = "python -c \"import gpt_oss.metal._metal; print('Metal module loaded successfully')\""
+test-requires = ["pytest>=8.0"]
+
+[tool.cibuildwheel.macos]
+# 为 Apple Silicon 构建
+archs = ["arm64"]
+before-build = "echo 'Installing build dependencies...' && pip install pybind11 && xcodebuild -downloadComponent MetalToolchain 2>/dev/null || echo 'MetalToolchain already installed'"
+after-build = "echo 'Build complete: {wheel}'"
+
+[tool.cibuildwheel.macos.environment]
+# Minimum supported: macOS 13.0 (Ventura)
+# Tested on: macOS 26.2 (Sequoia 15.2)
+MACOSX_DEPLOYMENT_TARGET = "13.0"
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+fix = true
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

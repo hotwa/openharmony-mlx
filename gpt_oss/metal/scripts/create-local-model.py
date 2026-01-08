@@ -176,7 +176,7 @@ def main(args):
         config = json.load(f)
 
     num_blocks = config["num_hidden_layers"]
-    num_experts = config["num_experts"]
+    num_experts = config.get("num_experts") or config.get("num_local_experts", 32)
     num_active_experts = 4
     num_q_heads = config["num_attention_heads"]
     num_kv_heads = config["num_key_value_heads"]
@@ -187,9 +187,9 @@ def main(args):
     rope_theta = config["rope_theta"]
     attention_window = config["sliding_window"]
     initial_context_length = config["initial_context_length"]
-    rope_scaling_factor = config["rope_scaling_factor"]
-    rope_ntk_alpha = config["rope_ntk_alpha"]
-    rope_ntk_beta = config["rope_ntk_beta"]
+    rope_scaling_factor = config.get("rope_scaling_factor") or config.get("rope_scaling", {}).get("factor", 32.0)
+    rope_ntk_alpha = config.get("rope_ntk_alpha") or config.get("rope_scaling", {}).get("alpha", 1.0)
+    rope_ntk_beta = config.get("rope_ntk_beta") or config.get("rope_scaling", {}).get("beta_fast", 32.0)
 
     tokens_size = 0
     num_text_tokens = 0
@@ -205,139 +205,158 @@ def main(args):
     print(f"Tokenizer: {num_included_tokens} tokens")
 
     tensors = {}
+    # Check for sharded safetensors
+    safetensors_file = "model.safetensors"
+    index_file = os.path.join(options.src, "model.safetensors.index.json")
+    if os.path.exists(index_file):
+        # Load all shard files
+        with open(index_file, "r") as f:
+            index_data = json.load(f)
+        weight_map = index_data.get("weight_map", {})
+        shard_files = set(weight_map.values())
+        for shard in shard_files:
+            shard_path = os.path.join(options.src, shard)
+            with safe_open(shard_path, framework="pt", device="cpu") as src:
+                for key in src.keys():
+                    tensors[key] = src.get_tensor(key)
+    else:
+        safetensors_file = "model.safetensors"
+        with safe_open(os.path.join(options.src, safetensors_file), framework="pt", device="cpu") as src:
+            for key in src.keys():
+                tensors[key] = src.get_tensor(key)
     with open(options.dst, "wb") as dst:
-        with safe_open(os.path.join(options.src, "model.safetensors"), framework="pt", device="cpu") as src:
-            write_file_header(dst)
+        write_file_header(dst)
 
-            yarn_low = (
-                head_dim / 2
-                * math.log(initial_context_length / (rope_ntk_beta * 2 * math.pi))
-                / math.log(rope_theta)
-            )
-            yarn_high = (
-                head_dim / 2
-                * math.log(initial_context_length / (rope_ntk_alpha * 2 * math.pi))
-                / math.log(rope_theta)
-            )
+        yarn_low = (
+            head_dim / 2
+            * math.log(initial_context_length / (rope_ntk_beta * 2 * math.pi))
+            / math.log(rope_theta)
+        )
+        yarn_high = (
+            head_dim / 2
+            * math.log(initial_context_length / (rope_ntk_alpha * 2 * math.pi))
+            / math.log(rope_theta)
+        )
 
-            write_model_header(dst,
-                               context_length=int(initial_context_length * rope_scaling_factor),
-                               num_blocks=num_blocks,
-                               num_experts=num_experts,
-                               num_active_experts=num_active_experts,
-                               embedding_dim=embedding_dim,
-                               mlp_dim=mlp_dim,
-                               swiglu_limit=swiglu_limit,
-                               head_dim=head_dim,
-                               num_heads=num_q_heads,
-                               num_kv_heads=num_kv_heads,
-                               attention_window=attention_window,
-                               rope_theta=rope_theta,
-                               interpolation_scale=1.0 / rope_scaling_factor,
-                               yarn_offset=-yarn_low / (yarn_high - yarn_low),
-                               yarn_scale=1.0 / (yarn_high - yarn_low),
-                               yarn_multiplier=0.1 * math.log(rope_scaling_factor) + 1.0,
-                               rmsnorm_epsilon=1.0e-5)
+        write_model_header(dst,
+                           context_length=int(initial_context_length * rope_scaling_factor),
+                           num_blocks=num_blocks,
+                           num_experts=num_experts,
+                           num_active_experts=num_active_experts,
+                           embedding_dim=embedding_dim,
+                           mlp_dim=mlp_dim,
+                           swiglu_limit=swiglu_limit,
+                           head_dim=head_dim,
+                           num_heads=num_q_heads,
+                           num_kv_heads=num_kv_heads,
+                           attention_window=attention_window,
+                           rope_theta=rope_theta,
+                           interpolation_scale=1.0 / rope_scaling_factor,
+                           yarn_offset=-yarn_low / (yarn_high - yarn_low),
+                           yarn_scale=1.0 / (yarn_high - yarn_low),
+                           yarn_multiplier=0.1 * math.log(rope_scaling_factor) + 1.0,
+                           rmsnorm_epsilon=1.0e-5)
 
-            write_tokenizer_header(dst,
-                                   num_special_tokens=num_included_tokens - num_text_tokens,
-                                   num_text_tokens=num_text_tokens,
-                                   regex_size=len(o200k_gptoss._pat_str.encode("ascii")) + 1,
-                                   tokens_size=tokens_size)
+        write_tokenizer_header(dst,
+                               num_special_tokens=num_included_tokens - num_text_tokens,
+                               num_text_tokens=num_text_tokens,
+                               regex_size=len(o200k_gptoss._pat_str.encode("ascii")) + 1,
+                               tokens_size=tokens_size)
 
-            ### Tokenizer
-            # Special tokens
-            for token_idx in range(num_text_tokens, num_included_tokens):
-                token = o200k_gptoss.decode_single_token_bytes(token_idx).decode('ascii')
-                if token in INCLUDE_SPECIAL_TOKENS:
-                    dst.write(SPECIAL_TOKEN_UUID[token])
-                else:
-                    dst.write(bytes(16))
-            # Regex
-            dst.write(o200k_gptoss._pat_str.encode("ascii"))
-            dst.write(struct.pack('B', 0))
-            # Text tokens
-            tokenizer_bytes_written = 0
-            for t in range(num_text_tokens):
-                token_bytes = o200k_gptoss.decode_single_token_bytes(t)
-                assert len(token_bytes) > 0
-                dst.write(struct.pack('<H', len(token_bytes)))
-                dst.write(token_bytes)
-                tokenizer_bytes_written += len(token_bytes) + 2
-            assert(tokenizer_bytes_written == tokens_size), (tokenizer_bytes_written, tokens_size)
+        ### Tokenizer
+        # Special tokens
+        for token_idx in range(num_text_tokens, num_included_tokens):
+            token = o200k_gptoss.decode_single_token_bytes(token_idx).decode('ascii')
+            if token in INCLUDE_SPECIAL_TOKENS:
+                dst.write(SPECIAL_TOKEN_UUID[token])
+            else:
+                dst.write(bytes(16))
+        # Regex
+        dst.write(o200k_gptoss._pat_str.encode("ascii"))
+        dst.write(struct.pack('B', 0))
+        # Text tokens
+        tokenizer_bytes_written = 0
+        for t in range(num_text_tokens):
+            token_bytes = o200k_gptoss.decode_single_token_bytes(t)
+            assert len(token_bytes) > 0
+            dst.write(struct.pack('<H', len(token_bytes)))
+            dst.write(token_bytes)
+            tokenizer_bytes_written += len(token_bytes) + 2
+        assert(tokenizer_bytes_written == tokens_size), (tokenizer_bytes_written, tokens_size)
+        write_padding(dst)
+
+        embedding_weight = tensors["model.embed_tokens.weight"]
+        # Filter out unused tokens
+        embedding_weight = embedding_weight[:num_included_tokens, :]
+        write_embedding_weight(dst, embedding_weight)
+
+        for n in tqdm(range(num_blocks)):
+            write_rmsnorm_gain(dst, tensors[f"model.layers.{n}.input_layernorm.weight"])
+
+            attn_qkv_weight = tensors[f"model.layers.{n}.self_attn.qkv.weight"].clone()
+            attn_qkv_bias = tensors[f"model.layers.{n}.self_attn.qkv.bias"].clone()
+            for qkv in (attn_qkv_weight, attn_qkv_bias):
+                qk = qkv[:head_dim * (num_q_heads + num_kv_heads), ...].contiguous()
+                v = qkv[head_dim * (num_q_heads + num_kv_heads):, ...].contiguous()
+                qk = qk.view(num_q_heads + num_kv_heads, 2, head_dim // 2, -1).transpose(1, 2).reshape(num_q_heads + num_kv_heads, head_dim, -1)
+                q = qk[:num_q_heads, ...]
+                k = qk[num_q_heads:, ...]
+                # Factor multiplication by 1/sqrt(64) = 0.125 = 0.5 * 0.25 in SDPA into Q and K projections
+                assert head_dim == 64
+                q *= 0.5
+                k *= 0.25
+                v = v.view(num_kv_heads, head_dim, -1)
+                qkv.copy_(torch.cat((q, k, v), dim=0).reshape(*qkv.shape))
+
+            write_linear_weight(dst, attn_qkv_weight, attn_qkv_bias)
+
+            write_attn_sink(dst, tensors[f"model.layers.{n}.self_attn.sinks"])
+
+            write_linear_weight(dst, tensors[f"model.layers.{n}.self_attn.o_proj.weight"], tensors[f"model.layers.{n}.self_attn.o_proj.bias"])
+
+            write_rmsnorm_gain(dst, tensors[f"model.layers.{n}.post_attention_layernorm.weight"])
+
+            write_linear_weight(dst, tensors[f"model.layers.{n}.mlp.gate_up_proj.weight"], tensors[f"model.layers.{n}.mlp.gate_up_proj.bias"])
+
+        write_rmsnorm_gain(dst, tensors["model.norm.weight"])
+
+        unembedding_weight = tensors["lm_head.weight"]
+        unembedding_weight = unembedding_weight[:num_included_tokens, :]
+        write_linear_weight(dst, unembedding_weight)
+
+        for n in tqdm(range(num_blocks)):
+            mlp1_blocks = tensors[f"model.layers.{n}.mlp.experts.gate_up_proj"]
+            mlp1_scales = tensors[f"model.layers.{n}.mlp.router.weight"]
+            assert mlp1_scales.min().item() < 254 - UE8_OFFSET
+            mlp1_bias = tensors[f"model.layers.{n}.mlp.experts.gate_up_proj_bias"]
+
+            mlp2_blocks = tensors[f"model.layers.{n}.mlp.experts.down_proj"]
+            mlp2_scales = tensors[f"model.layers.{n}.mlp.router.bias"]
+            assert mlp2_scales.min().item() < 254 - UE8_OFFSET
+            mlp2_bias = tensors[f"model.layers.{n}.mlp.experts.down_proj_bias"]
+
+            # Write MoE weights grouped by expert
             write_padding(dst)
 
-            embedding_weight = src.get_tensor("embedding.weight")
-            # Filter out unused tokens
-            embedding_weight = embedding_weight[:num_included_tokens, :]
-            write_embedding_weight(dst, embedding_weight)
+            for e in range(num_experts):
+                write_padding(dst, alignment_multiple=16)
+                dst.write(mlp1_blocks[e, ...].view(torch.uint8).numpy().tobytes())
 
-            for n in tqdm(range(num_blocks)):
-                write_rmsnorm_gain(dst, src.get_tensor(f"block.{n}.attn.norm.scale"))
+                write_padding(dst, alignment_multiple=16)
+                dst.write((mlp1_scales + UE8_OFFSET)[e, ...].view(torch.uint8).numpy().tobytes())
 
-                attn_qkv_weight = src.get_tensor(f"block.{n}.attn.qkv.weight")
-                attn_qkv_bias = src.get_tensor(f"block.{n}.attn.qkv.bias")
-                for qkv in (attn_qkv_weight, attn_qkv_bias):
-                    qk = qkv[:head_dim * (num_q_heads + num_kv_heads), ...].contiguous()
-                    v = qkv[head_dim * (num_q_heads + num_kv_heads):, ...].contiguous()
-                    qk = qk.view(num_q_heads + num_kv_heads, 2, head_dim // 2, -1).transpose(1, 2).reshape(num_q_heads + num_kv_heads, head_dim, -1)
-                    q = qk[:num_q_heads, ...]
-                    k = qk[num_q_heads:, ...]
-                    # Factor multiplication by 1/sqrt(64) = 0.125 = 0.5 * 0.25 in SDPA into Q and K projections
-                    assert head_dim == 64
-                    q *= 0.5
-                    k *= 0.25
-                    v = v.view(num_kv_heads, head_dim, -1)
-                    qkv.copy_(torch.cat((q, k, v), dim=0).reshape(*qkv.shape))
+                write_padding(dst, alignment_multiple=16)
+                dst.write(mlp1_bias[e, ...].view(torch.uint8).numpy().tobytes())
 
-                write_linear_weight(dst, attn_qkv_weight, attn_qkv_bias)
+                write_padding(dst, alignment_multiple=16)
+                dst.write(mlp2_blocks[e, ...].view(torch.uint8).numpy().tobytes())
 
-                write_attn_sink(dst, src.get_tensor(f"block.{n}.attn.sinks"))
+                write_padding(dst, alignment_multiple=16)
+                dst.write((mlp2_scales + UE8_OFFSET)[e, ...].view(torch.uint8).numpy().tobytes())
 
-                write_linear_weight(dst, src.get_tensor(f"block.{n}.attn.out.weight"), src.get_tensor(f"block.{n}.attn.out.bias"))
-
-                write_rmsnorm_gain(dst, src.get_tensor(f"block.{n}.mlp.norm.scale"))
-
-                write_linear_weight(dst, src.get_tensor(f"block.{n}.mlp.gate.weight"), src.get_tensor(f"block.{n}.mlp.gate.bias"))
-
-            write_rmsnorm_gain(dst, src.get_tensor("norm.scale"))
-
-            unembedding_weight = src.get_tensor("unembedding.weight")
-            unembedding_weight = unembedding_weight[:num_included_tokens, :]
-            write_linear_weight(dst, unembedding_weight)
-
-            for n in tqdm(range(num_blocks)):
-                mlp1_blocks = src.get_tensor(f"block.{n}.mlp.mlp1_weight.blocks")
-                mlp1_scales = src.get_tensor(f"block.{n}.mlp.mlp1_weight.scales")
-                assert mlp1_scales.min().item() < 254 - UE8_OFFSET
-                mlp1_bias = src.get_tensor(f"block.{n}.mlp.mlp1_bias")
-
-                mlp2_blocks = src.get_tensor(f"block.{n}.mlp.mlp2_weight.blocks")
-                mlp2_scales = src.get_tensor(f"block.{n}.mlp.mlp2_weight.scales")
-                assert mlp2_scales.min().item() < 254 - UE8_OFFSET
-                mlp2_bias = src.get_tensor(f"block.{n}.mlp.mlp2_bias")
-
-                # Write MoE weights grouped by expert
-                write_padding(dst)
-
-                for e in range(num_experts):
-                    write_padding(dst, alignment_multiple=16)                    
-                    dst.write(mlp1_blocks[e, ...].view(torch.uint8).numpy().tobytes())
-
-                    write_padding(dst, alignment_multiple=16)
-                    dst.write((mlp1_scales + UE8_OFFSET)[e, ...].view(torch.uint8).numpy().tobytes())
-
-                    write_padding(dst, alignment_multiple=16)
-                    dst.write(mlp1_bias[e, ...].view(torch.uint8).numpy().tobytes())
-
-                    write_padding(dst, alignment_multiple=16)                    
-                    dst.write(mlp2_blocks[e, ...].view(torch.uint8).numpy().tobytes())
-
-                    write_padding(dst, alignment_multiple=16)
-                    dst.write((mlp2_scales + UE8_OFFSET)[e, ...].view(torch.uint8).numpy().tobytes())
-
-                    write_padding(dst, alignment_multiple=16)
-                    dst.write(mlp2_bias[e, ...].view(torch.uint8).numpy().tobytes())
+                write_padding(dst, alignment_multiple=16)
+                dst.write(mlp2_bias[e, ...].view(torch.uint8).numpy().tobytes())
 
 if __name__ == "__main__":
     main(sys.argv[1:])
+
