@@ -63,7 +63,7 @@ jobs:
 
       - name: Build wheel
         run: |
-          python -m cibuildwheel --platform macos --arch arm64 --output-dir wheelhouse
+          python -m cibuildwheel --platform macos --archs arm64 --output-dir wheelhouse
         env:
           CIBW_BUILD: "cp312-*"
           CIBW_SKIP: "*-win32 *-manylinux* *-musllinux*"
