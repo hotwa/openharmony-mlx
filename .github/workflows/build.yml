@@ -51,7 +51,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pip install build twine cibuildwheel pybind11
+          pip install build twine cibuildwheel scikit-build-core cmake pybind11
 
       - name: Download Metal Toolchain
         run: |
@@ -66,6 +66,7 @@ jobs:
         env:
           CIBW_BUILD: "cp312-*"
           CIBW_SKIP: "*-win32 *-manylinux* *-musllinux*"
+          CIBW_BUILD_VERBOSITY: "1"
           CIBW_TEST_COMMAND: "python -c 'import gpt_oss.metal._metal; print(\"OK\")'"
           # Minimum: macOS 13.0, Tested on: macOS ${{ env.MACOS_VERSION }}
 
@@ -84,6 +85,21 @@ jobs:
         run: |
           ls -la wheelhouse/
           unzip -l wheelhouse/*.whl | head -50
+
+      - name: Verify wheel contains native extension
+        run: |
+          python - <<'PY'
+          import glob, zipfile, sys
+          whl = glob.glob("wheelhouse/*.whl")[0]
+          z = zipfile.ZipFile(whl)
+          names = z.namelist()
+          hit = [n for n in names if "gpt_oss/metal/_metal" in n and (n.endswith(".so") or ".dylib" in n)]
+          print("Wheel:", whl)
+          print("Native extension found:", hit[:3] if hit else "NOT FOUND!")
+          if not hit:
+            print("ERROR: native extension not found in wheel")
+            sys.exit(1)
+          PY
 
   pypi_release:
     name: PyPI release
