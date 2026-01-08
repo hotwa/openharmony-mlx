@@ -84,6 +84,7 @@ cmake = true
 build-dir = "build/scikit_build"
 
 [tool.scikit-build.cmake]
+source-dir = "gpt_oss/metal"
 args = ["-DCMAKE_BUILD_TYPE=Release"]
 
 [tool.scikit-build.metadata]
